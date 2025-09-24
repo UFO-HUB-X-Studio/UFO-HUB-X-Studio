@@ -305,6 +305,314 @@ do
     end)
 end
 ----------------------------------------------------------------
+-- 🎯 GET POSITION BUTTON (on-screen)
+----------------------------------------------------------------
+local Players = game:GetService("Players")
+local TS      = TS or game:GetService("TweenService")
+local LP      = Players.LocalPlayer
+
+-- เผื่อไม่มี helper
+local function make(class, props, kids)
+    local o = Instance.new(class)
+    for k,v in pairs(props or {}) do o[k] = v end
+    for _,c in ipairs(kids or {}) do c.Parent = o end
+    return o
+end
+
+-- สีธีม fallback
+local ACCENT = ACCENT or Color3.fromRGB(0,255,140)
+local SUB    = SUB    or Color3.fromRGB(22,22,22)
+local FG     = FG     or Color3.fromRGB(235,235,235)
+
+-- ล้างปุ่มเดิม (ถ้ามี)
+local old = content:FindFirstChild("UFOX_GetPosBtn")
+if old then old:Destroy() end
+
+-- ปุ่มมุมขวาบนภายใน content
+local btn = make("TextButton",{
+    Name="UFOX_GetPosBtn",
+    Parent = content,
+    AnchorPoint = Vector2.new(1,0),
+    Position = UDim2.new(1,-14,0,10),    -- ชิดขวา-บนเล็กน้อย
+    Size = UDim2.fromOffset(140,30),
+    BackgroundColor3 = SUB,
+    AutoButtonColor = false,
+    Text = "📍 Get Position",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = FG,
+    ZIndex = 20,
+},{
+    make("UICorner",{CornerRadius = UDim.new(0,10)}),
+    make("UIStroke",{
+        Color = ACCENT, Thickness = 2, Transparency = 0,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    })
+})
+
+-- Toast แจ้งเตือนสั้น ๆ
+local toast = make("TextLabel",{
+    Name="Toast",
+    Parent=content,
+    AnchorPoint=Vector2.new(1,0),
+    Position=UDim2.new(1,-14,0,46),
+    Size=UDim2.fromOffset(220,24),
+    BackgroundColor3=Color3.fromRGB(20,20,20),
+    Text="",
+    TextColor3=FG, Font=Enum.Font.Gotham, TextSize=13,
+    Visible=false
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,8)}),
+    make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.3})
+})
+
+local function showToast(msg)
+    toast.Text = msg
+    toast.Visible = true
+    toast.TextTransparency = 1
+    toast.BackgroundTransparency = 0.2
+    TS:Create(toast, TweenInfo.new(0.12), {TextTransparency=0}):Play()
+    task.delay(1.4, function()
+        TS:Create(toast, TweenInfo.new(0.2), {TextTransparency=1}):Play()
+        task.wait(0.22)
+        toast.Visible = false
+    end)
+end
+
+local function fmtVec3(v)
+    return string.format("%.3f, %.3f, %.3f", v.X, v.Y, v.Z)
+end
+
+btn.MouseButton1Click:Connect(function()
+    local char = LP.Character or LP.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    local pos = hrp.Position
+    local cf  = hrp.CFrame
+
+    -- ข้อความพร้อมใช้งาน
+    local posStr = "Vector3.new("..fmtVec3(pos)..")"
+    local cfStr  = tostring(cf) -- รูปแบบ CFrame.new(...)
+
+    print("🌍 Position:", pos)
+    print("🧭 CFrame:", cf)
+    print("Copy-ready:")
+    print(posStr)
+    print(cfStr)
+
+    -- ลองคัดลอกคลิปบอร์ด (ถ้ามีฟังก์ชันให้ใช้)
+    local copied = false
+    if typeof(setclipboard) == "function" then
+        local bundle = posStr .. "\n" .. cfStr
+        pcall(function()
+            setclipboard(bundle)
+            copied = true
+        end)
+    end
+
+    showToast(copied and "✅ Copied Position & CFrame!" or "✅ Printed to Output")
+end)
+
+-- เอฟเฟกต์ hover
+btn.MouseEnter:Connect(function()
+    TS:Create(btn, TweenInfo.new(0.08), {BackgroundColor3=Color3.fromRGB(32,32,32)}):Play()
+end)
+btn.MouseLeave:Connect(function()
+    TS:Create(btn, TweenInfo.new(0.12), {BackgroundColor3=SUB}):Play()
+end)
+----------------------------------------------------------------
+-- 📍 SAVE & WARP POSITIONS (UI + copy as Lua config)
+-- - ปุ่มเซฟชื่อจุด + แสดงรายการจุดที่บันทึก
+-- - กด 'TP' เพื่อวาร์ป, '✕' เพื่อลบ, 'Copy' เพื่อคัดลอกเป็นโค้ด
+-- - เก็บไว้ในรันไทม์: _G.UFOX_SavedSpots
+----------------------------------------------------------------
+local Players = game:GetService("Players")
+local TS      = TS or game:GetService("TweenService")
+local LP      = Players.LocalPlayer
+
+-- สี fallback
+local ACCENT = ACCENT or Color3.fromRGB(0,255,140)
+local SUB    = SUB    or Color3.fromRGB(22,22,22)
+local FG     = FG     or Color3.fromRGB(235,235,235)
+
+-- helper
+local function make(class, props, kids)
+    local o=Instance.new(class); for k,v in pairs(props or {}) do o[k]=v end
+    for _,c in ipairs(kids or {}) do c.Parent=o end; return o
+end
+
+-- ถ้ามีของเก่า ลบทิ้ง
+local old = content:FindFirstChild("UFOX_PosPanel"); if old then old:Destroy() end
+
+-- =========== UI PANEL ===========
+local panel = make("Frame",{
+    Name="UFOX_PosPanel", Parent=content, AnchorPoint=Vector2.new(1,0),
+    Position=UDim2.new(1,-14,0,10), Size=UDim2.fromOffset(300,220),
+    BackgroundColor3=Color3.fromRGB(18,18,18)
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,10)}),
+    make("UIStroke",{Color=ACCENT,Thickness=2,Transparency=0.1})
+})
+-- หัวข้อ + ช่องตั้งชื่อ + ปุ่ม
+make("TextLabel",{
+    Parent=panel, BackgroundTransparency=1, Position=UDim2.fromOffset(12,8),
+    Size=UDim2.new(1,-24,0,20), Text="Saved Warps", TextXAlignment=Enum.TextXAlignment.Left,
+    Font=Enum.Font.GothamBold, TextSize=15, TextColor3=FG
+})
+local nameBox = make("TextBox",{
+    Parent=panel, Position=UDim2.fromOffset(12,34), Size=UDim2.new(1,-124,0,28),
+    BackgroundColor3=SUB, PlaceholderText="ชื่อจุด (เช่น Spawn/Shop/Bank)",
+    Text="", Font=Enum.Font.Gotham, TextSize=13, TextColor3=FG, PlaceholderColor3=Color3.fromRGB(160,160,160),
+    ClearTextOnFocus=false
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,8)}),
+    make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.4})
+})
+local btnSave = make("TextButton",{
+    Parent=panel, Position=UDim2.new(1,-104,0,34), Size=UDim2.fromOffset(44,28),
+    BackgroundColor3=SUB, Text="Save", Font=Enum.Font.GothamBold, TextSize=13, TextColor3=FG, AutoButtonColor=false
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,8)}),
+    make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.3})
+})
+local btnCopy = make("TextButton",{
+    Parent=panel, Position=UDim2.new(1,-52,0,34), Size=UDim2.fromOffset(44,28),
+    BackgroundColor3=SUB, Text="Copy", Font=Enum.Font.GothamBold, TextSize=13, TextColor3=FG, AutoButtonColor=false
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,8)}),
+    make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.3})
+})
+
+-- ลิสต์จุด (เลื่อนขึ้นลงได้)
+local listHolder = make("Frame",{
+    Parent=panel, Position=UDim2.fromOffset(12,70), Size=UDim2.new(1,-24,1,-82),
+    BackgroundTransparency=1
+},{})
+local scroll = make("ScrollingFrame",{
+    Parent=listHolder, Size=UDim2.fromScale(1,1), CanvasSize=UDim2.new(0,0,0,0),
+    BackgroundTransparency=1, BorderSizePixel=0, ScrollBarThickness=4, ScrollBarImageColor3=ACCENT
+},{
+    make("UIListLayout",{Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder})
+})
+
+-- Toast
+local toast = make("TextLabel",{
+    Parent=panel, AnchorPoint=Vector2.new(0.5,0), Position=UDim2.new(0.5,0,1,6),
+    Size=UDim2.fromOffset(260,22), BackgroundColor3=Color3.fromRGB(20,20,20),
+    Text="", TextColor3=FG, Font=Enum.Font.Gotham, TextSize=12, Visible=false
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,8)}),
+    make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.4})
+})
+local function showToast(msg)
+    toast.Text=msg; toast.Visible=true; toast.TextTransparency=1
+    TS:Create(toast, TweenInfo.new(0.1), {TextTransparency=0}):Play()
+    task.delay(1.2,function()
+        TS:Create(toast, TweenInfo.new(0.15), {TextTransparency=1}):Play()
+        task.wait(0.16); toast.Visible=false
+    end)
+end
+
+-- =========== DATA ===========
+local saved = _G.UFOX_SavedSpots or {}
+_G.UFOX_SavedSpots = saved
+
+local function serializeCFrame(cf)
+    local c={cf:GetComponents()}
+    return string.format(
+        "CFrame.new(%.3f, %.3f, %.3f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f)",
+        table.unpack(c)
+    )
+end
+
+local function rebuildList()
+    scroll:ClearAllChildren()
+    make("UIListLayout",{Parent=scroll, Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder})
+    for i,spot in ipairs(saved) do
+        local row = make("Frame",{
+            Parent=scroll, Size=UDim2.new(1,0,0,30), BackgroundColor3=SUB
+        },{
+            make("UICorner",{CornerRadius=UDim.new(0,8)}),
+            make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.5})
+        })
+        make("TextLabel",{
+            Parent=row, BackgroundTransparency=1, Position=UDim2.fromOffset(10,0),
+            Size=UDim2.new(1,-120,1,0), Text=string.format("%d) %s",i,spot.name),
+            TextXAlignment=Enum.TextXAlignment.Left, Font=Enum.Font.Gotham, TextSize=13, TextColor3=FG
+        })
+
+        local btnTP = make("TextButton",{
+            Parent=row, AnchorPoint=Vector2.new(1,0.5), Position=UDim2.new(1,-64,0.5,0),
+            Size=UDim2.fromOffset(44,22), BackgroundColor3=Color3.fromRGB(30,30,30),
+            Text="TP", Font=Enum.Font.GothamBold, TextSize=12, TextColor3=FG, AutoButtonColor=false
+        },{
+            make("UICorner",{CornerRadius=UDim.new(0,6)}),
+            make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.3})
+        })
+        local btnDel = make("TextButton",{
+            Parent=row, AnchorPoint=Vector2.new(1,0.5), Position=UDim2.new(1,-12,0.5,0),
+            Size=UDim2.fromOffset(22,22), BackgroundColor3=Color3.fromRGB(40,22,22),
+            Text="✕", Font=Enum.Font.GothamBold, TextSize=12, TextColor3=Color3.fromRGB(255,120,120),
+            AutoButtonColor=false
+        },{
+            make("UICorner",{CornerRadius=UDim.new(0,6)}),
+            make("UIStroke",{Color=ACCENT,Thickness=1,Transparency=0.3})
+        })
+
+        btnTP.MouseButton1Click:Connect(function()
+            local char = LP.Character or LP.CharacterAdded:Wait()
+            local hrp  = char:WaitForChild("HumanoidRootPart")
+            hrp.CFrame = spot.cf
+            showToast("✅ Teleported to "..spot.name)
+        end)
+        btnDel.MouseButton1Click:Connect(function()
+            table.remove(saved,i); rebuildList(); showToast("🗑️ Deleted spot")
+        end)
+    end
+    -- ปรับ Canvas ให้เลื่อนพอดี
+    task.defer(function()
+        local layout = scroll:FindFirstChildOfClass("UIListLayout")
+        local ab = layout and layout.AbsoluteContentSize or Vector2.new(0,0)
+        scroll.CanvasSize = UDim2.new(0,0,0,ab.Y+8)
+    end)
+end
+
+-- =========== BUTTONS ===========
+btnSave.MouseButton1Click:Connect(function()
+    local char = LP.Character or LP.CharacterAdded:Wait()
+    local hrp  = char:WaitForChild("HumanoidRootPart")
+    local nm   = (nameBox.Text ~= "" and nameBox.Text) or ("Spot "..tostring(#saved+1))
+    table.insert(saved, {name=nm, cf=hrp.CFrame})
+    rebuildList()
+    showToast("💾 Saved: "..nm)
+end)
+
+btnCopy.MouseButton1Click:Connect(function()
+    if #saved == 0 then showToast("ℹ️ ยังไม่มีจุดที่บันทึก"); return end
+    local lines = {"return {"}
+    for _,s in ipairs(saved) do
+        table.insert(lines, string.format("  { name = %q, cf = %s },", s.name, serializeCFrame(s.cf)))
+    end
+    table.insert(lines,"}")
+    local bundle = table.concat(lines,"\n")
+
+    if typeof(setclipboard)=="function" then
+        local ok,err = pcall(function() setclipboard(bundle) end)
+        showToast(ok and "✅ Copied config to clipboard" or "⚠️ Copy ไม่ได้ ดู Output")
+    else
+        showToast("ℹ️ ไม่มี setclipboard — ดู Output")
+    end
+    print("---- Saved Warp Config ----\n"..bundle.."\n---------------------------")
+end)
+
+-- เล็ก ๆ น้อย ๆ hover เอฟเฟกต์
+for _,b in ipairs({btnSave,btnCopy}) do
+    b.MouseEnter:Connect(function() TS:Create(b,TweenInfo.new(0.08),{BackgroundColor3=Color3.fromRGB(34,34,34)}):Play() end)
+    b.MouseLeave:Connect(function() TS:Create(b,TweenInfo.new(0.12),{BackgroundColor3=SUB}):Play() end)
+end
+
+-- เริ่มต้น
+rebuildList()
+----------------------------------------------------------------
 -- 🧱 UFOX SIDEBAR NORMALIZER
 -- - ยืดปุ่มให้กว้างเต็มแถบซ้าย (มีระยะขอบซ้าย/ขวาเท่ากัน)
 -- - บังคับขอบสีเขียวติดถาวร
