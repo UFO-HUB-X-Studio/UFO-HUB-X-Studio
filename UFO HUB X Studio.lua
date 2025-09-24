@@ -278,9 +278,9 @@ do
         })
     })
     make("TextLabel",{Parent=row, BackgroundTransparency=1, Size=UDim2.fromOffset(20,20),
-        Font=Enum.Font.GothamBold, TextSize=16, Text="👽", TextColor3=FG})
+        Font=Enum.Font.GothamBold, TextSize=16, Text="🌍", TextColor3=FG})
     make("TextLabel",{Parent=row, BackgroundTransparency=1, Size=UDim2.new(1,-36,1,0),
-        Font=Enum.Font.GothamBold, TextSize=16, Text="Home",
+        Font=Enum.Font.GothamBold, TextSize=16, Text="ตำแหน่ง",
         TextXAlignment=Enum.TextXAlignment.Left, TextColor3=FG})
 
     -- เอฟเฟกต์ hover เล็ก ๆ
