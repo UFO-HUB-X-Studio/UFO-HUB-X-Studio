@@ -909,101 +909,222 @@ local function tryCopy(s)
             Title="Clipboard", Text="สภาพแวดล้อมนี้ไม่รองรับ setclipboard", Duration=2
         })
     end)
-    return false
+    ----------------------------------------------------------------
+-- 📌 UFOX GLOBAL BUTTON INSPECTOR
+-- กดปุ่มไหนก็ได้บนจอ → บอก "ไประบบอะไร" + แสดง "โค้ดสคริปต์" + Copy
+----------------------------------------------------------------
+local Players    = game:GetService("Players")
+local LP         = Players.LocalPlayer
+local UIS        = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local CoreGui    = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+local TS         = TS or game:GetService("TweenService")
+
+-- ====== UI overlay ======
+local gui = Instance.new("ScreenGui")
+gui.Name = "UFOX_GlobalInspector"
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 10^6  -- ให้อยู่บนสุด
+gui.Parent = CoreGui
+
+local function uiStroke(parent, color, thk, tr)
+    local s = Instance.new("UIStroke", parent)
+    s.Color, s.Thickness, s.Transparency = color, thk or 1, tr or 0.4
+    return s
 end
 
-copyBtn.MouseButton1Click:Connect(function()
-    local ok = tryCopy(codeBox.Text)
-    if ok then showToast("Copied โค้ดลงคลิปบอร์ดแล้ว!", 1.0)
-    else showToast("คัดลอกไม่สำเร็จ (สภาพแวดล้อมไม่รองรับ)", 1.5) end
-end)
+local function rounded(parent, r)
+    local c = Instance.new("UICorner", parent)
+    c.CornerRadius = UDim.new(0, r or 10)
+    return c
+end
 
--- =============== 2) คำอธิบาย/โค้ด แบบตั้งชื่อ-แล้ว-แมป ===============
--- เติม/แก้ได้เองตรงนี้ (โค้ดสั้น ๆ หรือฟังก์ชันที่ปุ่มเรียก)
-local NAME_HINTS = {
-    UFOX_HomeBtn        = "เปิดหน้า Home (ตั้งค่าหลัก)",
-    UFOX_ShopBtn        = "เปิดหน้า Shop (ระบบร้านค้า)",
-    UFOX_FishBtn        = "เปิดหน้า Fishing (ระบบตกปลา)",
+-- Toast
+local toast = Instance.new("TextLabel")
+toast.AnchorPoint = Vector2.new(0.5,0)
+toast.Position    = UDim2.new(0.5,0,0,10)
+toast.Size        = UDim2.fromOffset(560,28)
+toast.BackgroundColor3 = Color3.fromRGB(18,18,18)
+toast.TextColor3  = Color3.fromRGB(235,235,235)
+toast.Font        = Enum.Font.Gotham
+toast.TextSize    = 14
+toast.TextWrapped = true
+toast.Visible     = false
+toast.Parent      = gui
+rounded(toast,10); uiStroke(toast, Color3.fromRGB(0,255,140), 1, 0.5)
 
-    UFOX_RowAFK         = "สวิตช์ AFK กันเตะ",
-    UFOX_RowAutoCollect = "เก็บเงินอัตโนมัติ",
-    UFOX_RowAutoEgg     = "ฟักไข่อัตโนมัติ",
+-- Panel
+local panel = Instance.new("Frame")
+panel.AnchorPoint = Vector2.new(0.5,1)
+panel.Position    = UDim2.new(0.5,0,1,-14)
+panel.Size        = UDim2.fromOffset(760,122)
+panel.BackgroundColor3 = Color3.fromRGB(16,16,16)
+panel.Parent = gui
+rounded(panel,12); uiStroke(panel, Color3.fromRGB(0,255,140), 1, 0.55)
+
+local title = Instance.new("TextLabel", panel)
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(12,8)
+title.Size     = UDim2.fromOffset(736,18)
+title.Font     = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextColor3 = Color3.fromRGB(235,235,235)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Text = "Inspector — กดปุ่มใด ๆ เพื่อดูรายละเอียด"
+
+local info = Instance.new("TextLabel", panel)
+info.BackgroundTransparency = 1
+info.Position = UDim2.fromOffset(12,28)
+info.Size     = UDim2.fromOffset(736,18)
+info.Font     = Enum.Font.Gotham
+info.TextSize = 13
+info.TextColor3 = Color3.fromRGB(200,200,200)
+info.TextWrapped = true
+info.TextXAlignment = Enum.TextXAlignment.Left
+info.Text = "Path: -  |  System: -"
+
+local codeBox = Instance.new("TextBox", panel)
+codeBox.ClearTextOnFocus = false
+codeBox.TextEditable = true
+codeBox.MultiLine = true
+codeBox.TextWrapped = true
+codeBox.Font = Enum.Font.Code
+codeBox.TextSize = 13
+codeBox.TextXAlignment = Enum.TextXAlignment.Left
+codeBox.TextYAlignment = Enum.TextYAlignment.Top
+codeBox.TextColor3 = Color3.fromRGB(235,235,235)
+codeBox.BackgroundColor3 = Color3.fromRGB(22,22,22)
+codeBox.Position = UDim2.fromOffset(12,50)
+codeBox.Size     = UDim2.fromOffset(660,60)
+codeBox.Text = "-- โค้ดของปุ่มจะแสดงที่นี่ (แก้/เพิ่มได้ใน NAME_CODE / Attribute)"
+rounded(codeBox,8); uiStroke(codeBox, Color3.fromRGB(0,255,140), 1, 0.7)
+
+local copyBtn = Instance.new("TextButton", panel)
+copyBtn.AutoButtonColor = true
+copyBtn.Text = "Copy"
+copyBtn.Font = Enum.Font.GothamBold
+copyBtn.TextSize = 14
+copyBtn.TextColor3 = Color3.fromRGB(10,10,10)
+copyBtn.BackgroundColor3 = Color3.fromRGB(0,255,140)
+copyBtn.Position = UDim2.new(1,-80,1,-44)
+copyBtn.Size = UDim2.fromOffset(68,32)
+rounded(copyBtn,8)
+
+local function showToast(msg, dur)
+    toast.Text = msg; toast.Visible = true; toast.TextTransparency = 1
+    TS:Create(toast, TweenInfo.new(0.08), {TextTransparency=0}):Play()
+    task.delay(dur or 1.2, function()
+        TS:Create(toast, TweenInfo.new(0.12), {TextTransparency=1}):Play()
+        task.wait(0.13); toast.Visible=false
+    end)
+end
+
+-- ====== Mapping: ตั้งชื่อ → ระบบอะไร + โค้ด ======
+-- คุณเพิ่ม/แก้ชื่อปุ่มได้เลย (หรือใช้ Attribute บนปุ่มแทน)
+local NAME_SYSTEM = {
+    UFOX_HomeBtn        = "Home",
+    UFOX_ShopBtn        = "Shop",
+    UFOX_FishBtn        = "Fishing",
+    UFOX_RowAFK         = "AFK",
+    UFOX_RowAutoCollect = "Auto Collect",
+    UFOX_RowAutoEgg     = "Auto Egg Hatch",
 }
-
 local NAME_CODE = {
-    -- ตัวอย่างโค้ด/คำสั่งที่อยากให้แสดง
     UFOX_HomeBtn = [[
--- เปิดหน้า Home
+-- ไปหน้า Home
 if _G.UFO_OpenHomePage then _G.UFO_OpenHomePage() end
 ]],
     UFOX_ShopBtn = [[
--- เปิดหน้า Shop
+-- ไปหน้า Shop
 if _G.UFO_OpenShopPage then _G.UFO_OpenShopPage() end
 ]],
     UFOX_FishBtn = [[
--- เปิดหน้า Fishing
+-- ไปหน้า Fishing
 if _G.UFO_OpenFishingPage then _G.UFO_OpenFishingPage() end
 ]],
     UFOX_RowAFK = [[
 -- Toggle AFK
-if _G.UFO_AFK_Set then _G.UFO_AFK_Set(true) end
+if _G.UFO_AFK_Set then _G.UFO_AFK_Set(not _G.UFO_AFK_IsOn()) end
 ]],
     UFOX_RowAutoCollect = [[
 -- Toggle Auto-Collect (ตัวอย่าง)
 if _G.UFO_AutoCollect_Toggle then _G.UFO_AutoCollect_Toggle() end
 ]],
     UFOX_RowAutoEgg = [[
--- Toggle Auto Egg Hatch (ตัวอย่าง)
+-- Toggle Auto Egg (ตัวอย่าง)
 if _G.UFO_AutoEgg_Toggle then _G.UFO_AutoEgg_Toggle() end
 ]],
 }
 
--- หมายเหตุ:
--- ถ้าปุ่มไหนชื่อไม่ตรงแมป สามารถใส่ Attribute เองที่ปุ่ม:
---   btn:SetAttribute("UFOX_Hint", "คำอธิบาย…")
---   btn:SetAttribute("UFOX_Code", "-- โค้ด…")
--- ระบบจะใช้ Attribute มาก่อนเสมอ
+-- ถ้าชื่อไม่ตรงแมป ให้ใส่ Attribute เองที่ปุ่ม:
+--   btn:SetAttribute("UFOX_System","ชื่อระบบ")
+--   btn:SetAttribute("UFOX_Code","-- โค้ด…")
+-- ระบบจะใช้ Attribute ก่อนเสมอ
 
--- =============== 3) ผูกปุ่ม: กดแล้วโชว์รายละเอียด ===============
-local function describeButton(btn)
-    -- อ่าน Hint
-    local hint = btn:GetAttribute("UFOX_Hint") or NAME_HINTS[btn.Name] or "ไม่มีคำอธิบาย"
-    -- อ่านโค้ด
-    local code = btn:GetAttribute("UFOX_Code") or NAME_CODE[btn.Name] or "-- ไม่ได้กำหนดโค้ดสำหรับปุ่มนี้"
+-- ====== Clipboard helper ======
+local function tryCopy(s)
+    local f = rawget(_G,"setclipboard") or rawget(_G,"toclipboard")
+    if not f and getgenv then
+        local g = getgenv()
+        f = (g and g.setclipboard) or (g and g.toclipboard)
+    end
+    if typeof(f)=="function" then
+        local ok = pcall(f, s); if ok then return true end
+    end
+    StarterGui:SetCore("SendNotification", {Title="Clipboard", Text="สภาพแวดล้อมไม่รองรับ setclipboard", Duration=2})
+    return false
+end
 
-    -- อัปเดต UI
-    local path = ""
-    pcall(function() path = btn:GetFullName() end)
+copyBtn.MouseButton1Click:Connect(function()
+    if tryCopy(codeBox.Text) then showToast("Copied โค้ดแล้ว!",1.0) end
+end)
+
+-- ====== ตัวดักคลิก: หา GuiObject ที่ถูกกด ======
+local function topClickableAt(x, y)
+    local list = GuiService:GetGuiObjectsAtPosition(x, y)
+    for _,g in ipairs(list) do
+        if gui and (g:IsDescendantOf(gui)) then
+            -- ข้าม UI ของ Inspector เอง
+        else
+            if g:IsA("TextButton") or g:IsA("ImageButton") then
+                return g
+            end
+        end
+    end
+    return nil
+end
+
+local function getPath(o)
+    local ok,res = pcall(function() return o:GetFullName() end)
+    return ok and res or o.Name
+end
+
+local function describe(btn)
+    -- อ่าน system/code จาก Attribute ก่อน
+    local system = btn:GetAttribute("UFOX_System") or NAME_SYSTEM[btn.Name] or "Unknown"
+    local code   = btn:GetAttribute("UFOX_Code")   or NAME_CODE[btn.Name]   or "-- (ยังไม่ได้กำหนดโค้ดสำหรับปุ่มนี้)"
 
     title.Text = string.format("Inspector — %s", btn.Name)
-    info.Text  = string.format("Path: %s  |  Hint: %s", path, hint)
+    info.Text  = string.format("Path: %s  |  System: %s", getPath(btn), system)
     codeBox.Text = code
 
-    -- Toast ย่อ ๆ
-    local short = (btn:IsA("TextButton") and btn.Text and btn.Text ~= "") and ("ปุ่ม “"..btn.Text.."” → "..hint) or ("ปุ่ม "..btn.Name.." → "..hint)
-    showToast(short, 1.2)
+    local label = (btn:IsA("TextButton") and btn.Text and btn.Text~="") and btn.Text or btn.Name
+    showToast(string.format("ปุ่ม \"%s\" → ระบบ: %s", label, system), 1.25)
 end
 
-local function attach(btn)
-    if not (btn:IsA("TextButton") or btn:IsA("ImageButton")) then return end
-    if btn:GetAttribute("UFOX_InspectorAttached") then return end
-    btn:SetAttribute("UFOX_InspectorAttached", true)
-
-    local function onPress() describeButton(btn) end
-    if btn.Activated then btn.Activated:Connect(onPress) end
-    if btn.MouseButton1Click then btn.MouseButton1Click:Connect(onPress) end
-    if btn.TouchTap then btn.TouchTap:Connect(onPress) end
-end
-
--- ผูกกับที่มีอยู่
-local root = mainGui or content or script.Parent
-if root then
-    for _,d in ipairs(root:GetDescendants()) do attach(d) end
-    if not root:GetAttribute("UFOX_InspectorWatch") then
-        root:SetAttribute("UFOX_InspectorWatch", true)
-        root.DescendantAdded:Connect(attach)
+-- ดัก Mouse / Touch
+UIS.InputEnded:Connect(function(i, gp)
+    if gp then return end
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        local pos = UIS:GetMouseLocation()
+        local btn = topClickableAt(pos.X, pos.Y)
+        if btn then describe(btn) end
     end
-end
+end)
 ----------------------------------------------------------------
 -- 🧱 UFOX SIDEBAR NORMALIZER
 -- - ยืดปุ่มให้กว้างเต็มแถบซ้าย (มีระยะขอบซ้าย/ขวาเท่ากัน)
