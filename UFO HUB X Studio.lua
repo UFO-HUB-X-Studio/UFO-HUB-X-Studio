@@ -769,110 +769,99 @@ end)
 -- เริ่มที่ Home
 ShowPage("Home")
 ----------------------------------------------------------------
--- 📌 UFOX GLOBAL BUTTON INSPECTOR (DROP-IN, 100%)
--- กดปุ่มไหนในจอ → โชว์ว่าไป "ระบบอะไร" + แสดง "โค้ดสคริปต์" + ปุ่ม Copy
--- ✅ จับได้แม้ปุ่มจะกิน input (ไม่สน gameProcessed)
--- ✅ รองรับ Mouse + Touch
--- ✅ ทำงานได้ทั้ง CoreGui/gethui() หรือ PlayerGui (auto fallback)
--- ✅ มีคีย์ลัด F7 เปิด/ปิดระบบ (ค่าเริ่มต้น: เปิด)
+-- 🔎 UFOX CLICK INSPECTOR — บอก "โค้ดตัวอย่าง/การทำงาน" ของสิ่งที่กด
+-- - กดปุ่ม UI: โชว์ path + แนะโค้ด MouseButton1Click/Activated
+-- - กดของในโลก 3D: Raycast หา Part แล้วโชว์ ProximityPrompt/ClickDetector
+-- - ถ้ามี getconnections/fireproximityprompt (executor) จะดึง/กดได้เพิ่ม
+-- - มีปุ่มสลับ ON/OFF + คีย์ลัด F7
 ----------------------------------------------------------------
-local Players      = game:GetService("Players")
-local LP           = Players.LocalPlayer
-local UIS          = game:GetService("UserInputService")
-local GuiService   = game:GetService("GuiService")
-local CoreGui      = game:GetService("CoreGui")
-local StarterGui   = game:GetService("StarterGui")
-local TS           = TS or game:GetService("TweenService")
+local Players = game:GetService("Players")
+local LP      = Players.LocalPlayer
+local UIS     = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local CoreGui   = game:GetService("CoreGui")
+local TS        = TS or game:GetService("TweenService")
+local RunS      = game:GetService("RunService")
+local Camera    = workspace.CurrentCamera
 
--- ========= Safe mount (กันไม่ขึ้น GUI) =========
-local function safeMount(screenGui)
-    screenGui.IgnoreGuiInset  = true
-    screenGui.ResetOnSpawn    = false
-    screenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
-    screenGui.DisplayOrder    = 999999
-
-    -- ลบของเก่าที่ชื่อซ้ำก่อน
-    local function nukeWhere(parent)
-        local old = parent and parent:FindFirstChild("UFOX_GlobalInspector")
-        if old then old:Destroy() end
-    end
-    pcall(function() nukeWhere(CoreGui) end)
-    if gethui then pcall(function() nukeWhere(gethui()) end) end
-    pcall(function() nukeWhere(LP:WaitForChild("PlayerGui")) end)
-
-    -- ป้องกัน (exploit) protect_gui
-    if syn and syn.protect_gui then pcall(function() syn.protect_gui(screenGui) end) end
-
-    -- ลำดับความพยายาม: gethui() → CoreGui → PlayerGui
-    local ok = false
-    if gethui then ok = pcall(function() screenGui.Parent = gethui() end) end
-    if not ok then ok = pcall(function() screenGui.Parent = CoreGui end) end
-    if not ok then
-        local pg = LP:FindFirstChildOfClass("PlayerGui") or LP:WaitForChild("PlayerGui")
-        screenGui.Parent = pg
-    end
+-- ========== Safe attach ==========
+local function safeParent(g)
+    g.IgnoreGuiInset = true
+    g.ResetOnSpawn = false
+    g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    g.DisplayOrder = 999999
+    if syn and syn.protect_gui then pcall(function() syn.protect_gui(g) end) end
+    local ok=false
+    if gethui then ok = pcall(function() g.Parent = gethui() end) end
+    if not ok then ok = pcall(function() g.Parent = CoreGui end) end
+    if not ok then g.Parent = LP:WaitForChild("PlayerGui") end
 end
 
--- ========= สไตล์/ยูทิลิตี้ UI =========
-local function rounded(parent, r)
-    local c = Instance.new("UICorner", parent)
-    c.CornerRadius = UDim.new(0, r or 10)
-    return c
-end
-local function uiStroke(parent, color, thk, tr)
-    local s = Instance.new("UIStroke", parent)
-    s.Color, s.Thickness, s.Transparency = color, thk or 1, tr or 0.4
-    return s
-end
+-- ========== UI ==========
+local ACCENT = Color3.fromRGB(0,255,140)
+local FG     = Color3.fromRGB(235,235,235)
+local BG     = Color3.fromRGB(16,16,16)
 
--- ========= ตัว UI หลัก (ไม่บังการคลิกเกม) =========
 local gui = Instance.new("ScreenGui")
-gui.Name = "UFOX_GlobalInspector"
-safeMount(gui)
-
-local toast = Instance.new("TextLabel")
-toast.AnchorPoint = Vector2.new(0.5,0)
-toast.Position    = UDim2.new(0.5,0,0,10)
-toast.Size        = UDim2.fromOffset(560,28)
-toast.BackgroundColor3 = Color3.fromRGB(18,18,18)
-toast.TextColor3  = Color3.fromRGB(235,235,235)
-toast.Font        = Enum.Font.Gotham
-toast.TextSize    = 14
-toast.TextWrapped = true
-toast.Visible     = false
-toast.Parent      = gui
-rounded(toast,10); uiStroke(toast, Color3.fromRGB(0,255,140), 1, 0.5)
+gui.Name = "UFOX_ClickInspector"
+safeParent(gui)
 
 local panel = Instance.new("Frame")
-panel.AnchorPoint = Vector2.new(0.5,1)
-panel.Position    = UDim2.new(0.5,0,1,-14)
-panel.Size        = UDim2.fromOffset(760,122)
-panel.BackgroundColor3 = Color3.fromRGB(16,16,16)
 panel.Parent = gui
-rounded(panel,12); uiStroke(panel, Color3.fromRGB(0,255,140), 1, 0.55)
+panel.AnchorPoint = Vector2.new(0.5,1)
+panel.Position = UDim2.new(0.5,0,1,-10)
+panel.Size = UDim2.fromOffset(820,170)
+panel.BackgroundColor3 = BG
+local c = Instance.new("UICorner", panel); c.CornerRadius = UDim.new(0,12)
+local s = Instance.new("UIStroke", panel); s.Color = ACCENT; s.Transparency = 0.45
 
-local title = Instance.new("TextLabel", panel)
+local title = Instance.new("TextLabel")
+title.Parent = panel
 title.BackgroundTransparency = 1
 title.Position = UDim2.fromOffset(12,8)
-title.Size     = UDim2.fromOffset(736,18)
-title.Font     = Enum.Font.GothamBold
+title.Size = UDim2.fromOffset(740,18)
+title.Font = Enum.Font.GothamBold
 title.TextSize = 14
-title.TextColor3 = Color3.fromRGB(235,235,235)
+title.TextColor3 = FG
 title.TextXAlignment = Enum.TextXAlignment.Left
-title.Text = "Inspector — กดปุ่มใด ๆ เพื่อดูรายละเอียด (F7 เปิด/ปิด)"
+title.Text = "UFOX Inspector — คลิก/แตะสิ่งใดก็ได้ เพื่อดูโค้ดตัวอย่าง (F7 เปิด/ปิด)"
 
-local info = Instance.new("TextLabel", panel)
-info.BackgroundTransparency = 1
-info.Position = UDim2.fromOffset(12,28)
-info.Size     = UDim2.fromOffset(736,18)
-info.Font     = Enum.Font.Gotham
-info.TextSize = 13
-info.TextColor3 = Color3.fromRGB(200,200,200)
-info.TextWrapped = true
-info.TextXAlignment = Enum.TextXAlignment.Left
-info.Text = "Path: -  |  System: -"
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Parent = panel
+toggleBtn.AnchorPoint = Vector2.new(1,0)
+toggleBtn.Position = UDim2.new(1,-10,0,8)
+toggleBtn.Size = UDim2.fromOffset(64,24)
+toggleBtn.Text = "ON"
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 14
+toggleBtn.TextColor3 = Color3.fromRGB(15,15,15)
+toggleBtn.BackgroundColor3 = ACCENT
+local c2 = Instance.new("UICorner", toggleBtn); c2.CornerRadius = UDim.new(0,8)
 
-local codeBox = Instance.new("TextBox", panel)
+local pathLbl = Instance.new("TextLabel")
+pathLbl.Parent = panel
+pathLbl.BackgroundTransparency = 1
+pathLbl.Position = UDim2.fromOffset(12,30)
+pathLbl.Size = UDim2.fromOffset(796,18)
+pathLbl.Font = Enum.Font.Gotham
+pathLbl.TextSize = 13
+pathLbl.TextColor3 = Color3.fromRGB(210,210,210)
+pathLbl.TextXAlignment = Enum.TextXAlignment.Left
+pathLbl.Text = "Path: -"
+
+local sysLbl = Instance.new("TextLabel")
+sysLbl.Parent = panel
+sysLbl.BackgroundTransparency = 1
+sysLbl.Position = UDim2.fromOffset(12,50)
+sysLbl.Size = UDim2.fromOffset(796,18)
+sysLbl.Font = Enum.Font.Gotham
+sysLbl.TextSize = 13
+sysLbl.TextColor3 = Color3.fromRGB(210,210,210)
+sysLbl.TextXAlignment = Enum.TextXAlignment.Left
+sysLbl.Text = "Detected: -"
+
+local codeBox = Instance.new("TextBox")
+codeBox.Parent = panel
 codeBox.ClearTextOnFocus = false
 codeBox.TextEditable = true
 codeBox.MultiLine = true
@@ -881,169 +870,226 @@ codeBox.Font = Enum.Font.Code
 codeBox.TextSize = 13
 codeBox.TextXAlignment = Enum.TextXAlignment.Left
 codeBox.TextYAlignment = Enum.TextYAlignment.Top
-codeBox.TextColor3 = Color3.fromRGB(235,235,235)
+codeBox.TextColor3 = FG
 codeBox.BackgroundColor3 = Color3.fromRGB(22,22,22)
-codeBox.Position = UDim2.fromOffset(12,50)
-codeBox.Size     = UDim2.fromOffset(660,60)
-codeBox.Text = "-- โค้ดของปุ่มจะแสดงที่นี่ (แก้/เพิ่มได้ใน NAME_CODE หรือ Attribute บนปุ่ม)"
-rounded(codeBox,8); uiStroke(codeBox, Color3.fromRGB(0,255,140), 1, 0.7)
+codeBox.Position = UDim2.fromOffset(12,72)
+codeBox.Size = UDim2.fromOffset(700,86)
+codeBox.Text = "-- คลิกปุ่ม/วัตถุ แล้วโค้ดตัวอย่างจะขึ้นที่นี่"
+local c3 = Instance.new("UICorner", codeBox); c3.CornerRadius = UDim.new(0,8)
+local s3 = Instance.new("UIStroke", codeBox); s3.Color = ACCENT; s3.Transparency = 0.6
 
-local copyBtn = Instance.new("TextButton", panel)
-copyBtn.AutoButtonColor = true
-copyBtn.Text = "Copy"
+local copyBtn = Instance.new("TextButton")
+copyBtn.Parent = panel
+copyBtn.AnchorPoint = Vector2.new(1,1)
+copyBtn.Position = UDim2.new(1,-12,1,-12)
+copyBtn.Size = UDim2.fromOffset(92,32)
+copyBtn.Text = "Copy Code"
 copyBtn.Font = Enum.Font.GothamBold
 copyBtn.TextSize = 14
-copyBtn.TextColor3 = Color3.fromRGB(10,10,10)
-copyBtn.BackgroundColor3 = Color3.fromRGB(0,255,140)
-copyBtn.Position = UDim2.new(1,-80,1,-44)
-copyBtn.Size = UDim2.fromOffset(68,32)
-rounded(copyBtn,8)
+copyBtn.TextColor3 = Color3.fromRGB(15,15,15)
+copyBtn.BackgroundColor3 = ACCENT
+local c4 = Instance.new("UICorner", copyBtn); c4.CornerRadius = UDim.new(0,8)
 
-local enabled = true  -- F7 toggle
+local toast = Instance.new("TextLabel")
+toast.Parent = gui
+toast.AnchorPoint = Vector2.new(0.5,0)
+toast.Position = UDim2.new(0.5,0,0,10)
+toast.Size = UDim2.fromOffset(560,28)
+toast.BackgroundColor3 = Color3.fromRGB(18,18,18)
+toast.TextColor3 = FG
+toast.Font = Enum.Font.Gotham
+toast.TextSize = 14
+toast.TextWrapped = true
+toast.Visible = false
+local c5 = Instance.new("UICorner", toast); c5.CornerRadius = UDim.new(0,10)
+local s5 = Instance.new("UIStroke", toast); s5.Color = ACCENT; s5.Transparency = 0.5
 
-local function showToast(msg, dur)
+local function notify(msg, dur)
     toast.Text = msg; toast.Visible = true; toast.TextTransparency = 1
-    TS:Create(toast, TweenInfo.new(0.08), {TextTransparency=0}):Play()
+    TS:Create(toast, TweenInfo.new(0.08), {TextTransparency = 0}):Play()
     task.delay(dur or 1.2, function()
-        TS:Create(toast, TweenInfo.new(0.12), {TextTransparency=1}):Play()
-        task.wait(0.13); toast.Visible=false
+        TS:Create(toast, TweenInfo.new(0.12), {TextTransparency = 1}):Play()
+        task.wait(0.13); toast.Visible = false
     end)
 end
 
--- ========= Mapping เริ่มต้น (แก้ตามชื่อปุ่มของคุณได้) =========
-local NAME_SYSTEM = {
-    UFOX_HomeBtn        = "Home",
-    UFOX_ShopBtn        = "Shop",
-    UFOX_FishBtn        = "Fishing",
-    UFOX_RowAFK         = "AFK",
-    UFOX_RowAutoCollect = "Auto Collect",
-    UFOX_RowAutoEgg     = "Auto Egg Hatch",
-}
-local NAME_CODE = {
-    UFOX_HomeBtn = [[
--- ไปหน้า Home
-if _G.UFO_OpenHomePage then _G.UFO_OpenHomePage() end
-]],
-    UFOX_ShopBtn = [[
--- ไปหน้า Shop
-if _G.UFO_OpenShopPage then _G.UFO_OpenShopPage() end
-]],
-    UFOX_FishBtn = [[
--- ไปหน้า Fishing
-if _G.UFO_OpenFishingPage then _G.UFO_OpenFishingPage() end
-]],
-    UFOX_RowAFK = [[
--- Toggle AFK
-if _G.UFO_AFK_Set and _G.UFO_AFK_IsOn then _G.UFO_AFK_Set(not _G.UFO_AFK_IsOn()) end
-]],
-    UFOX_RowAutoCollect = [[
--- Toggle Auto-Collect
-if _G.UFO_AutoCollect_Toggle then _G.UFO_AutoCollect_Toggle() end
-]],
-    UFOX_RowAutoEgg = [[
--- Toggle Auto Egg
-if _G.UFO_EGG_Set then _G.UFO_EGG_Set(true) end  -- ตัวอย่าง
-]],
-}
+-- ========== helpers ==========
+local function getFull(o)
+    local ok,res = pcall(function() return o:GetFullName() end)
+    return ok and res or (o and o.Name or "?")
+end
+local function topGuiButtonAt(x,y)
+    for _,g in ipairs(GuiService:GetGuiObjectsAtPosition(x,y)) do
+        local o = g
+        while o and not o:IsA("TextButton") and not o:IsA("ImageButton") do
+            if o == gui then o = nil; break end
+            o = o.Parent
+        end
+        if o and not o:IsDescendantOf(gui) then
+            return o
+        end
+    end
+    return nil
+end
+local function raycastFromScreen(x,y)
+    local origin = Camera.CFrame.Position
+    local unitRay = Camera:ViewportPointToRay(x, y, 0)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {LP.Character}
+    local res = workspace:Raycast(unitRay.Origin, unitRay.Direction * 9999, raycastParams)
+    return res
+end
 
--- ถ้าชื่อไม่ตรง ให้ตั้ง Attribute ที่ปุ่ม:
--- btn:SetAttribute("UFOX_System","ชื่อระบบ")
--- btn:SetAttribute("UFOX_Code","-- โค้ดของระบบ")
+-- พยายามดึง connection (เฉพาะ executor ที่มี getconnections)
+local function listConnections(sig)
+    local lines = {}
+    if typeof(getconnections) == "function" then
+        local ok, conns = pcall(getconnections, sig)
+        if ok and conns then
+            for i,cn in ipairs(conns) do
+                local info
+                if typeof(debug)=="table" and debug.getinfo and cn.Function then
+                    local ok2, di = pcall(debug.getinfo, cn.Function)
+                    if ok2 and di then
+                        info = string.format("-- connection #%d: %s:%s", i, tostring(di.short_src), tostring(di.currentline))
+                    end
+                end
+                table.insert(lines, info or ("-- connection #"..i))
+            end
+        end
+    end
+    return (#lines>0) and table.concat(lines, "\n") or "-- (no connection info / sandboxed)"
+end
 
--- ========= Helper =========
-local function tryCopy(s)
+-- ตัวอย่างโค้ดตามชนิดเป้าหมาย
+local function codeForGui(btn)
+    local base = string.format("-- %s (%s)\nlocal btn = %s\n", btn.Name, btn.ClassName, getFull(btn))
+    local c1 = "-- Hook click\nbtn.MouseButton1Click:Connect(function()\n    print('clicked "..btn.Name.."')\nend)\n"
+    local c2 = "-- Activated (UI controller / touch)\nbtn.Activated:Connect(function()\n    print('activated "..btn.Name.."')\nend)\n"
+    local cx = ""
+    if typeof(getconnections)=="function" then
+        cx = "\n-- Existing connections on this button:\n"..listConnections(btn.MouseButton1Click or btn.Activated)
+    end
+    return base..c1..c2..cx
+end
+
+local function codeForPrompt(prompt)
+    -- fireproximityprompt มักมีใน executor
+    local canFire = (typeof(fireproximityprompt)=="function")
+    local base = string.format("-- ProximityPrompt @ %s\nlocal prompt = %s\n", getFull(prompt), getFull(prompt))
+    local ex = canFire and "fireproximityprompt(prompt)" or "-- ใช้ E เพื่อกด หรือ executor บางตัวมี fireproximityprompt(prompt)"
+    return base..ex.."\n"
+end
+
+local function codeForClickDetector(cd)
+    local base = string.format("-- ClickDetector @ %s\nlocal cd = %s\n", getFull(cd), getFull(cd))
+    local ex = "-- คลิกด้วยเมาส์เพื่อทริกเกอร์ หรือ :MaxActivationDistance ปรับระยะได้"
+    return base..ex.."\n"
+end
+
+local function codeForPart(part)
+    return string.format("-- BasePart @ %s\n-- คุณสามารถ :PivotTo(CFrame.new(...)) เพื่อวาร์ป, หรือค้นหา descendants (ProximityPrompt/ClickDetector)\n", getFull(part))
+end
+
+-- ========== main logic ==========
+local enabled = true
+local function setEnabled(b)
+    enabled = b
+    toggleBtn.Text = b and "ON" or "OFF"
+    toggleBtn.BackgroundColor3 = b and ACCENT or Color3.fromRGB(120,120,120)
+    notify(b and "Inspector: ON" or "Inspector: OFF", 0.9)
+end
+toggleBtn.MouseButton1Click:Connect(function() setEnabled(not enabled) end)
+UIS.InputBegan:Connect(function(i,gp) if i.KeyCode==Enum.KeyCode.F7 then setEnabled(not enabled) end end)
+
+local function outlineOnce(inst)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = ACCENT
+    stroke.Thickness = 2
+    stroke.Parent = inst
+    task.delay(0.4, function() if stroke.Parent then stroke:Destroy() end end)
+end
+
+local function inspectAt(x,y)
+    -- 1) ลองหา GUI ก่อน (ชั้นบนสุด)
+    local btn = topGuiButtonAt(x,y)
+    if btn then
+        pathLbl.Text = "Path: "..getFull(btn)
+        sysLbl.Text  = ("Detected: GUI %s"):format(btn.ClassName)
+        codeBox.Text = codeForGui(btn)
+        outlineOnce(btn)
+        return
+    end
+    -- 2) ไม่ใช่ GUI → Raycast โลก 3D
+    local hit = raycastFromScreen(x,y)
+    if hit and hit.Instance then
+        local inst = hit.Instance
+        pathLbl.Text = "Path: "..getFull(inst)
+        local found = {}
+        -- หา ProximityPrompt / ClickDetector บนต้นไม้
+        local root = inst
+        if not root:IsA("Model") then root = root:FindFirstAncestorOfClass("Model") or inst end
+        for _,desc in ipairs(root:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then table.insert(found, desc) end
+            if desc:IsA("ClickDetector")   then table.insert(found, desc) end
+        end
+        if #found == 0 then
+            sysLbl.Text = "Detected: "..inst.ClassName.." (no Prompt/ClickDetector found)"
+            codeBox.Text = codeForPart(inst)
+        else
+            local lines = {}
+            for _,d in ipairs(found) do
+                if d:IsA("ProximityPrompt") then
+                    table.insert(lines, codeForPrompt(d))
+                elseif d:IsA("ClickDetector") then
+                    table.insert(lines, codeForClickDetector(d))
+                end
+            end
+            sysLbl.Text = ("Detected: 3D (%d handler(s))"):format(#found)
+            codeBox.Text = table.concat(lines, "\n")
+        end
+        return
+    end
+    -- 3) ว่างเปล่า
+    pathLbl.Text = "Path: -"
+    sysLbl.Text  = "Detected: none"
+    codeBox.Text = "-- ไม่พบ GUI/วัตถุที่คลิกได้ตรงตำแหน่งนี้"
+end
+
+-- จับคลิก/ทัช (แม้ gameProcessed)
+UIS.InputEnded:Connect(function(i, gp)
+    if not enabled then return end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        local pos = UIS:GetMouseLocation()
+        inspectAt(pos.X, pos.Y)
+    elseif i.UserInputType == Enum.UserInputType.Touch then
+        local pos = i.Position
+        inspectAt(pos.X, pos.Y)
+    end
+end)
+
+-- Copy
+local function tryCopy(txt)
     local f = rawget(_G,"setclipboard") or rawget(_G,"toclipboard")
     if not f and getgenv then
         local g = getgenv()
         f = (g and g.setclipboard) or (g and g.toclipboard)
     end
     if typeof(f)=="function" then
-        local ok = pcall(f, s); if ok then return true end
+        local ok = pcall(f, txt); if ok then return true end
     end
-    StarterGui:SetCore("SendNotification", {Title="Clipboard", Text="สภาพแวดล้อมไม่รองรับ setclipboard", Duration=2})
     return false
 end
-
 copyBtn.MouseButton1Click:Connect(function()
-    if tryCopy(codeBox.Text) then showToast("Copied โค้ดแล้ว!",1.0) end
-end)
-
-local function getPath(o)
-    local ok,res = pcall(function() return o:GetFullName() end)
-    return ok and res or o.Name
-end
-
-local function ascendToButton(o)
-    while o and not o:IsA("TextButton") and not o:IsA("ImageButton") do
-        if o == gui then return nil end -- อย่าจับ UI ของตัวตรวจเอง
-        o = o.Parent
-    end
-    return o
-end
-
-local function topButtonAt(x, y)
-    local list = GuiService:GetGuiObjectsAtPosition(x, y)
-    for _,g in ipairs(list) do
-        local btn = ascendToButton(g)
-        if btn and not btn:IsDescendantOf(gui) then
-            return btn
-        end
-    end
-    return nil
-end
-
-local function describe(btn)
-    local system = btn:GetAttribute("UFOX_System") or NAME_SYSTEM[btn.Name] or "Unknown"
-    local code   = btn:GetAttribute("UFOX_Code")   or NAME_CODE[btn.Name]   or "-- (ยังไม่ได้กำหนดโค้ดสำหรับปุ่มนี้)"
-
-    title.Text = string.format("Inspector — %s", btn.Name)
-    info.Text  = string.format("Path: %s  |  System: %s", getPath(btn), system)
-    codeBox.Text = code
-
-    local label = (btn:IsA("TextButton") and btn.Text and btn.Text~="") and btn.Text or btn.Name
-    showToast(string.format('ปุ่ม "%s" → ระบบ: %s', label, system), 1.25)
-
-    -- ไฮไลต์ขอบปุ่มชั่วคราวให้เห็นชัด
-    task.spawn(function()
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(0,255,140)
-        stroke.Thickness = 2
-        stroke.Transparency = 0
-        stroke.Parent = btn
-        task.wait(0.35)
-        if stroke.Parent then stroke:Destroy() end
-    end)
-end
-
--- ========= Toggle F7 =========
-UIS.InputBegan:Connect(function(i, gp)
-    if i.KeyCode == Enum.KeyCode.F7 then
-        enabled = not enabled
-        gui.Enabled = enabled
-        showToast(enabled and "Inspector: ON (F7 ปิด)" or "Inspector: OFF (F7 เปิด)", 1.1)
+    if tryCopy(codeBox.Text) then
+        notify("Copied code ✓", 0.9)
+    else
+        notify("สภาพแวดล้อมไม่รองรับ clipboard", 1.2)
     end
 end)
 
--- ========= จับคลิก/ทัช (ไม่สน gameProcessed) =========
-local function handlePointer(pos)
-    if not enabled then return end
-    local btn = topButtonAt(pos.X, pos.Y)
-    if btn then describe(btn) end
-end
-
-UIS.InputEnded:Connect(function(i, gp)
-    -- ไม่ return เมื่อ gp == true  เราต้องการจับแม้ปุ่มจะกิน input
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        local pos = UIS:GetMouseLocation()
-        handlePointer(pos)
-    elseif i.UserInputType == Enum.UserInputType.Touch then
-        local pos = i.Position  -- Vector2
-        handlePointer(pos)
-    end
-end)
-
--- ส่งสัญญาณพร้อมใช้งาน
-showToast("Inspector พร้อมใช้งาน • คลิกปุ่มไหนก็ได้เพื่อดูระบบ/โค้ด • F7 เปิด/ปิด", 2)
+notify("Inspector พร้อม • กดจุดไหนก็ได้เพื่อดูโค้ด • F7 เปิด/ปิด", 1.6)
 
 ----------------------------------------------------------------
 -- 🧱 UFOX SIDEBAR NORMALIZER
