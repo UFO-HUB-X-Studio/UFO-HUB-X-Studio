@@ -613,6 +613,162 @@ end
 -- เริ่มต้น
 rebuildList()
 ----------------------------------------------------------------
+-- 🛒 Shop Tab (แยกเป็นปุ่มที่ 2 + สลับหน้าได้จริง)
+-- ต้องมี: left, content, TS, ACCENT, SUB, FG (มี fallback)
+----------------------------------------------------------------
+local TS = TS or game:GetService("TweenService")
+local ACCENT = ACCENT or Color3.fromRGB(0,255,140)
+local SUB    = SUB    or Color3.fromRGB(22,22,22)
+local FG     = FG     or Color3.fromRGB(235,235,235)
+
+local function make(class, props, kids)
+    local o=Instance.new(class); for k,v in pairs(props or {}) do o[k]=v end
+    for _,c in ipairs(kids or {}) do c.Parent=o end; return o
+end
+
+-- ===== 1) เตรียม content & เพจ =====
+if not content or not content.Parent then
+    warn("[UFOX] content not found"); return
+end
+
+-- เพจ Home
+local pgHome = content:FindFirstChild("pgHome")
+if not pgHome then
+    pgHome = make("Frame",{
+        Name="pgHome", Parent=content, BackgroundTransparency=1,
+        Size=UDim2.new(1,-20,1,-20), Position=UDim2.new(0,10,0,10), Visible=true
+    },{})
+end
+
+-- เพจ Shop (ลบเก่าแล้วสร้างใหม่)
+local oldPgShop = content:FindFirstChild("pgShop"); if oldPgShop then oldPgShop:Destroy() end
+local pgShop = make("Frame",{
+    Name="pgShop", Parent=content, BackgroundTransparency=1,
+    Size=UDim2.new(1,-20,1,-20), Position=UDim2.new(0,10,0,10), Visible=false
+},{})
+make("TextLabel",{
+    Parent=pgShop, BackgroundTransparency=1, Size=UDim2.new(1,0,0,28),
+    Font=Enum.Font.GothamBold, TextSize=20, Text="🛒 Shop",
+    TextColor3=FG, TextXAlignment=Enum.TextXAlignment.Left
+},{})
+
+-- 🔁 ย้ายคอนโทรลเดิม ๆ ของหน้า Home ให้ไปอยู่ใน pgHome
+-- (ทุก Frame/Button/Label ที่เป็นลูกของ content แต่ไม่ใช่สองเพจนี้ → ย้ายเข้าหน้า Home)
+for _,ch in ipairs(content:GetChildren()) do
+    if ch ~= pgHome and ch ~= pgShop and ch:IsA("GuiObject") then
+        ch.Parent = pgHome
+    end
+end
+
+-- ===== 2) Sidebar layout =====
+if not left or not left.Parent then
+    warn("[UFOX] left sidebar not found"); return
+end
+local layout = left:FindFirstChildOfClass("UIListLayout")
+if not layout then
+    layout = make("UIListLayout",{
+        Parent=left, Padding=UDim.new(0,10),
+        FillDirection=Enum.FillDirection.Vertical,
+        HorizontalAlignment=Enum.HorizontalAlignment.Center,
+        VerticalAlignment=Enum.VerticalAlignment.Begin
+    },{})
+end
+if not left:FindFirstChildOfClass("UIPadding") then
+    make("UIPadding",{Parent=left, PaddingTop=UDim.new(0,14), PaddingLeft=UDim.new(0,8), PaddingRight=UDim.new(0,8)},{})
+end
+
+-- ===== 3) ปุ่ม Home (#1) =====
+local btnHome = left:FindFirstChild("UFOX_HomeBtn")
+if not btnHome then
+    btnHome = make("TextButton",{
+        Name="UFOX_HomeBtn", Parent=left, AutoButtonColor=false, Text="",
+        Size=UDim2.new(1,-16,0,38), BackgroundColor3=SUB, ClipsDescendants=true,
+        LayoutOrder=1
+    },{
+        make("UICorner",{CornerRadius=UDim.new(0,10)}),
+        make("UIStroke",{Color=ACCENT, Thickness=2, Transparency=0}) -- ขอบเขียวคม
+    })
+    local row = make("Frame",{
+        Parent=btnHome, BackgroundTransparency=1,
+        Size=UDim2.new(1,-16,1,0), Position=UDim2.new(0,8,0,0)
+    },{
+        make("UIListLayout",{
+            FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,8),
+            HorizontalAlignment=Enum.HorizontalAlignment.Left,
+            VerticalAlignment=Enum.VerticalAlignment.Center
+        })
+    })
+    make("TextLabel",{Parent=row, BackgroundTransparency=1, Size=UDim2.fromOffset(20,20),
+        Font=Enum.Font.GothamBold, TextSize=16, Text="🏠", TextColor3=FG})
+    make("TextLabel",{Parent=row, BackgroundTransparency=1, Size=UDim2.new(1,-36,1,0),
+        Font=Enum.Font.GothamBold, TextSize=15, Text="Home",
+        TextXAlignment=Enum.TextXAlignment.Left, TextColor3=FG})
+end
+btnHome.LayoutOrder = 1
+btnHome.Size = UDim2.new(1,-16,0,38) -- ให้เท่ากันแน่ ๆ
+
+-- ===== 4) ปุ่ม Shop (#2) =====
+local oldShop = left:FindFirstChild("UFOX_ShopBtn"); if oldShop then oldShop:Destroy() end
+local btnShop = make("TextButton",{
+    Name="UFOX_ShopBtn", Parent=left, AutoButtonColor=false, Text="",
+    Size=UDim2.new(1,-16,0,38), BackgroundColor3=SUB, ClipsDescendants=true,
+    LayoutOrder=2
+},{
+    make("UICorner",{CornerRadius=UDim.new(0,10)}),
+    make("UIStroke",{Color=ACCENT, Thickness=2, Transparency=0}) -- ขอบเขียวคม
+})
+local rowS = make("Frame",{
+    Parent=btnShop, BackgroundTransparency=1,
+    Size=UDim2.new(1,-16,1,0), Position=UDim2.new(0,8,0,0)
+},{
+    make("UIListLayout",{
+        FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,8),
+        HorizontalAlignment=Enum.HorizontalAlignment.Left,
+        VerticalAlignment=Enum.VerticalAlignment.Center
+    })
+})
+make("TextLabel",{Parent=rowS, BackgroundTransparency=1, Size=UDim2.fromOffset(20,20),
+    Font=Enum.Font.GothamBold, TextSize=16, Text="🛒", TextColor3=FG})
+make("TextLabel",{Parent=rowS, BackgroundTransparency=1, Size=UDim2.new(1,-36,1,0),
+    Font=Enum.Font.GothamBold, TextSize=15, Text="Shop",
+    TextXAlignment=Enum.TextXAlignment.Left, TextColor3=FG})
+
+-- ===== 5) สไตล์ + สลับหน้า =====
+local function setBtnActive(btn, active)
+    local stroke = btn:FindFirstChildOfClass("UIStroke")
+    if active then
+        TS:Create(btn, TweenInfo.new(0.10), {BackgroundColor3 = Color3.fromRGB(32,32,32)}):Play()
+        if stroke then stroke.Transparency = 0 end
+    else
+        TS:Create(btn, TweenInfo.new(0.10), {BackgroundColor3 = SUB}):Play()
+        if stroke then stroke.Transparency = 0 end -- ให้เห็นขอบตลอด
+    end
+end
+
+local function ShowPage(name)
+    local isShop = (name == "Shop")
+    pgHome.Visible = not isShop
+    pgShop.Visible = isShop
+    setBtnActive(btnHome, not isShop)
+    setBtnActive(btnShop, isShop)
+end
+
+-- กันผูกซ้ำ
+if not btnHome:GetAttribute("UFOX_TabHooked") then
+    btnHome:SetAttribute("UFOX_TabHooked", true)
+    btnHome.MouseButton1Click:Connect(function()
+        if typeof(_G.UFO_OpenHomePage)=="function" then pcall(_G.UFO_OpenHomePage) end
+        ShowPage("Home")
+    end)
+end
+btnShop.MouseButton1Click:Connect(function()
+    ShowPage("Shop")
+    if typeof(_G.UFO_OpenShopPage)=="function" then pcall(_G.UFO_OpenShopPage) end
+end)
+
+-- เริ่มที่ Home
+ShowPage("Home")
+----------------------------------------------------------------
 -- 🧱 UFOX SIDEBAR NORMALIZER
 -- - ยืดปุ่มให้กว้างเต็มแถบซ้าย (มีระยะขอบซ้าย/ขวาเท่ากัน)
 -- - บังคับขอบสีเขียวติดถาวร
